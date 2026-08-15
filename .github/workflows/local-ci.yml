@@ -1,0 +1,41 @@
+name: Local CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: local-ci / smoke
+    runs-on: [self-hosted, linux, x64, landing-ci]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify isolated local runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "ct100-landing-ci-01"
+          test ! -S /var/run/docker.sock
+          fs_type="$(stat -f -c %T "$GITHUB_WORKSPACE")"
+          case "$fs_type" in
+            nfs*|cifs|smb*)
+              echo "Unsafe workspace filesystem: $fs_type" >&2
+              exit 1
+              ;;
+          esac
+          test -f README.md
+          git --version
+          printf 'runner=%s\nfilesystem=%s\n' "$RUNNER_NAME" "$fs_type"
